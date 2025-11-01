@@ -19,7 +19,7 @@ FROM build-base AS quickjspp
 COPY --link --from=src_quickjspp / /quickjspp/
 WORKDIR /quickjspp/
 RUN cmake -DCMAKE_BUILD_TYPE=Release . && \
-    make quickjs -j 2 && \
+    mold -run make quickjs -j 2 && \
     install -m644 -pvD -t /emptydir/usr/lib/quickjs/ \
         quickjs/libquickjs.a && \
     install -m644 -pvD -t /emptydir/usr/include/quickjs/ \
@@ -31,7 +31,7 @@ FROM build-base AS libcron
 COPY --link --from=src_libcron / /libcron/
 WORKDIR /libcron/
 RUN cmake -DCMAKE_BUILD_TYPE=Release . && \
-    make libcron -j 2 && \
+    mold -run make libcron -j 2 && \
     install -m644 -pvD -t /emptydir/usr/lib/ \
         libcron/out/Release/liblibcron.a && \
     install -m644 -pvD -t /emptydir/usr/include/libcron/ \
@@ -46,9 +46,12 @@ COPY --link --from=src_subconverter   / /subconverter/
 WORKDIR /subconverter/
 RUN rm -f include/quickjspp.hpp && \
     cmake -DCMAKE_BUILD_TYPE=Release . && \
-    make -j 4
-# smoke test
-RUN timeout 3s /subconverter/subconverter; \
+    mold -run make -j 4
+
+ARG CACHE_BUST
+RUN echo "Cache bust: ${CACHE_BUST}" > /cache_bust.txt; \
+    readelf -p .comment /subconverter/subconverter; \
+    timeout 3s /subconverter/subconverter; \
     smoke_test=$? && \
     if [[ "${smoke_test}" -eq 0 ]] || [[ "${smoke_test}" -eq 124 ]]; then \
         echo "Smoke test passed"; \
