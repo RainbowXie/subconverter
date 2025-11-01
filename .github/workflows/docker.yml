@@ -1,128 +1,182 @@
-name: Publish Docker Image
-on: 
-  push:
-    branches: [ master ]
-    tags:
-      - '**'
+name: subconverter Image CI
+permissions: {}
 
-concurrency: 
-  group: ${{ github.ref }}-${{ github.workflow }}
-  cancel-in-progress: true
+on:
+  push:
+    branches:
+    - 'master'
+    paths:
+    - '.github/workflows/docker.yml'
+    - 'docker/**'
+  pull_request: {}
+  workflow_dispatch:
 
 env:
-  REGISTRY_IMAGE: tindy2013/subconverter
+  REGISTRY_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/subconverter
 
 jobs:
-  build:
-    strategy:
-      matrix:
-        include:
-          - platform: linux/amd64
-            os: ubuntu-latest
-          - platform: linux/386
-            os: ubuntu-latest
-          - platform: linux/arm/v7
-            os: ubuntu-24.04-arm
-          - platform: linux/arm64
-            os: ubuntu-24.04-arm
-    runs-on: ${{ matrix.os }}
-    name: Build ${{ matrix.platform }} Image
+  git:
+    name: git
+    runs-on: ubuntu-slim
     steps:
-      - name: Prepare
-        run: |
-          platform=${{ matrix.platform }}
-          echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV    
-               
-      - name: Checkout base
-        uses: actions/checkout@v4
+      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
+          path: src/*/.git/
+          key: cached-source-codes-${{ github.run_id }}
+          restore-keys: |
+            cached-source-codes-
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          path: src/subconverter
+          persist-credentials: false
+          ref: "patch-1"
           fetch-depth: 0
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Docker meta
-        id: meta
-        uses: docker/metadata-action@v5
+          fetch-tags: true
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
-          images: ${{ env.REGISTRY_IMAGE }}
-          tags: |
-            type=semver,pattern={{version}}
-            type=raw,value=latest,enable={{is_default_branch}}
-
-      - name: Docker login
-        uses: docker/login-action@v3
+          path: src/quickjspp
+          persist-credentials: false
+          repository: "ftk/quickjspp"
+          submodules: true
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
+          path: src/libcron
+          persist-credentials: false
+          repository: "PerMalmberg/libcron"
+          submodules: true
 
-      - name: Get commit SHA
-        if: github.ref == 'refs/heads/master'
-        id: vars
-        run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-
-      - name: Build and export
-        id: build
-        uses: docker/build-push-action@v5
-        with:
-          platforms: ${{ matrix.platform }}
-          context: scripts/
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            SHA=${{ steps.vars.outputs.sha_short }}
-          outputs: type=image,name=${{ env.REGISTRY_IMAGE }},push-by-digest=true,name-canonical=true,push=true
-
-      - name: Export digest
+      - uses: astral-sh/setup-uv@85856786d1ce8acfbcc2f13a5f3fbd6b938f9f41 # v7.1.2
+      - name: update
+        shell: bash
         run: |
-          rm -rf /tmp/digests
-          mkdir -p /tmp/digests
-          digest="${{ steps.build.outputs.digest }}"
-          touch "/tmp/digests/${digest#sha256:}"
+            cd ./src/subconverter/ || exit 1
+            git remote remove upstream || true
+            git remote add upstream https://github.com/tindy2013/subconverter.git
+            git fetch --all --prune --prune-tags
+            git pull --rebase upstream master || exit 1
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+            SHA=$(git describe --exact-match HEAD 2>/dev/null || git describe --tags --always --long)
+            [[ -n "$SHA" ]] && sed -i "s/\(v[0-9]\.[0-9]\.[0-9]\)/${SHA}/" src/version.h
+            uv run --with gitpython \
+                scripts/update_rules.py -c scripts/rules_config.conf
+
+      - uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
-          name: digest-${{ env.PLATFORM_PAIR }}
-          path: /tmp/digests/*
+          path: src/*/.git/
+          key: cached-source-codes-${{ github.run_id }}
+      -
+        name: Upload digest
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: source-code
+          path: src/
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 1
+
+  subconverter:
+    name: subconverter
+    needs:
+      - git
+    runs-on: ${{ matrix.platform == 'linux/arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - linux/amd64
+          - linux/arm64
+    steps:
+      -
+        name: Download digests
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          name: source-code
+          path: src/
+      -
+        name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+      -
+        name: Login to Docker Hub
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      -
+        name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          build-contexts: |
+            src_quickjspp=./src/quickjspp/
+            src_libcron=./src/libcron/
+            src_subconverter=./src/subconverter/
+          context: "{{defaultContext}}:docker"
+          push: ${{ github.event_name != 'pull_request' }}
+          platforms: ${{ matrix.platform }}
+          cache-from: type=gha,scope=${{ matrix.platform }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.platform }}
+          outputs: type=image,compression=estargz,force-compression=true,oci-mediatypes=true,name=${{ env.REGISTRY_IMAGE }},push-by-digest=true,name-canonical=true
+      -
+        name: Export digest
+        if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+        env:
+          digest: ${{ steps.build.outputs.digest }}
+          platform: ${{ matrix.platform }}
+        run: |
+          mkdir -p /tmp/subconverter-digests/
+          touch "/tmp/subconverter-digests/${digest#sha256:}"
+          echo "PLATFORM_PAIR=${platform//\//-}" >> "$GITHUB_ENV"
+      -
+        name: Upload digest
+        if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: subconverter-digests-${{ env.PLATFORM_PAIR }}
+          path: /tmp/subconverter-digests/*
           if-no-files-found: error
           retention-days: 1
 
-  merge:
-    name: Merge
-    needs: build
-    runs-on: ubuntu-latest
+  subconverter-multiarch:
+    runs-on: ubuntu-24.04
+    if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+    needs:
+      - subconverter
     steps:
-      - name: Download digests
-        uses: actions/download-artifact@v4
+      -
+        name: Download digests
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
         with:
-          path: /tmp/digests
-          pattern: digest-*
+          path: /tmp/subconverter-digests/
+          pattern: subconverter-digests-*
           merge-multiple: true
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Docker meta
-        id: meta
-        uses: docker/metadata-action@v5
+      -
+        name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+      -
+        name: Login to Docker Hub
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
         with:
-          images: ${{ env.REGISTRY_IMAGE }}
-          tags: |
-            type=semver,pattern={{version}}
-            type=raw,value=latest,enable={{is_default_branch}}
-
-      - name: Docker login
-        uses: docker/login-action@v3
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      -
+        name: Create manifest list and push
+        working-directory: /tmp/subconverter-digests/
+        env:
+          REGISTRY_IMAGE: ${{ env.REGISTRY_IMAGE }}
+        run: |
+          # shellcheck disable=SC2046
+          docker buildx imagetools create --tag "${REGISTRY_IMAGE}:latest" \
+              $(printf "${REGISTRY_IMAGE}@sha256:%s " *)
+      -
+        name: Inspect image
+        env:
+          REGISTRY_IMAGE: ${{ env.REGISTRY_IMAGE }}
+        run: |
+          docker buildx imagetools inspect "${REGISTRY_IMAGE}:latest" \
+              | grep -Po '[^ \r\n\t\v]+@sha256:[a-z0-9]+' | xargs -r -t -n 1 docker buildx imagetools inspect --raw
+      -
+        name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # 0.33.1
         with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
-      - name: Create manifest list and push
-        working-directory: /tmp/digests
-        run: |
-          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf '${{ env.REGISTRY_IMAGE }}@sha256:%s ' *)      
-    
-      - name: Inspect image
-        run: |
-          docker buildx imagetools inspect ${{ env.REGISTRY_IMAGE }}:${{ steps.meta.outputs.version }}
+          image-ref: "${{ env.REGISTRY_IMAGE }}:latest"
+          format: 'table'
