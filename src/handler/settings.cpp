@@ -803,7 +803,7 @@ void readConf()
                 return readYAMLConf(yaml);
         }
         toml::value conf = parseToml(prefdata, global.prefPath);
-        if(!conf.is_empty() && toml::find_or<int>(conf, "version", 0))
+        if(!conf.is_uninitialized() && toml::find_or<int>(conf, "version", 0))
             return readTOMLConf(conf);
     }
     catch (YAML::Exception &e)
@@ -1213,7 +1213,7 @@ int loadExternalConfig(std::string &path, ExternalConfig &ext)
         if(yaml.size() && yaml["custom"].IsDefined())
             return loadExternalYAML(yaml, ext);
         toml::value conf = parseToml(base_content, path);
-        if(!conf.is_empty() && toml::find_or<int>(conf, "version", 0))
+        if(!conf.is_uninitialized() && toml::find_or<int>(conf, "version", 0))
             return loadExternalTOML(conf, ext);
     }
     catch (YAML::Exception &e)
