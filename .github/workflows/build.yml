@@ -5,13 +5,7 @@ permissions:
 on:
   push:
     branches:
-      - master
-    paths:
-      - '.github/workflows/build.yml'
-      - 'CMakeLists.txt'
-      - 'cmake/**'
-      - 'include/**'
-      - 'src/**'
+      - '**'
   pull_request: {}
   workflow_dispatch:
 
