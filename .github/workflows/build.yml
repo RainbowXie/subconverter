@@ -71,10 +71,12 @@ jobs:
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
       - name: Build
         run: cmake --build build --config Release -j "$(nproc)"
-      - name: Create/Update latest tag
+      - name: Create build tag
         run: |
-          git tag -f latest "${GITHUB_SHA}"
-          git push -f origin latest
+          TAG="build-$(date -u +%Y%m%d-%H%M%S)-${GITHUB_SHA::7}"
+          echo "RELEASE_TAG=${TAG}" >> "${GITHUB_ENV}"
+          git tag "${TAG}" "${GITHUB_SHA}"
+          git push origin "${TAG}"
       - name: Upload executable
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
@@ -95,12 +97,11 @@ jobs:
           cp -a /usr/lib/x86_64-linux-gnu/libyaml-cpp.so.* "${PKG_DIR}/lib/"
           patchelf --set-rpath '$ORIGIN/lib' "${PKG_DIR}/subconverter"
           tar -czf "${PKG_DIR}.tar.gz" "${PKG_DIR}"
-      - name: Publish release (latest)
+      - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: latest
+          tag_name: ${{ env.RELEASE_TAG }}
           name: ${{ github.sha }}
-          make_latest: true
           files: |
             build/subconverter
             subconverter-${{ github.sha }}.tar.gz
