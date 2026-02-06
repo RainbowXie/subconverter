@@ -127,6 +127,7 @@ jobs:
         run: cmake --build build --config Release -j "$(nproc)"
       - name: Create build tag
         run: |
+          git config --global --add safe.directory /__w/subconverter/subconverter
           TAG="build-$(date -u +%Y%m%d-%H%M%S)-${GITHUB_SHA::7}"
           echo "RELEASE_TAG=${TAG}" >> "${GITHUB_ENV}"
           git tag "${TAG}" "${GITHUB_SHA}"
