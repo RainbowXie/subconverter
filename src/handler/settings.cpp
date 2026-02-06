@@ -34,23 +34,6 @@ static inline bool toml_value_is_empty(const toml::value& v)
     return false;
 }
 } // namespace
-namespace {
-template <typename T>
-constexpr bool has_is_uninitialized_v = requires(const T& v) { v.is_uninitialized(); };
-
-template <typename T>
-constexpr bool has_is_empty_v = requires(const T& v) { v.is_empty(); };
-
-static inline bool toml_value_is_empty(const toml::value& v)
-{
-    if constexpr (has_is_uninitialized_v<toml::value>)
-        return v.is_uninitialized();
-    if constexpr (has_is_empty_v<toml::value>)
-        return v.is_empty();
-    return false;
-}
-} // namespace
-
 #include "config/binding.h"
 #include "handler/webget.h"
 #include "script/cron.h"
