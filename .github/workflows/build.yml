@@ -19,33 +19,46 @@ jobs:
   build:
     name: Build (linux)
     runs-on: ubuntu-24.04
+    container:
+      image: alpine:3.22
     steps:
+      - name: Install system dependencies
+        run: |
+          apk update
+          apk add --no-cache \
+            ca-certificates \
+            cmake \
+            coreutils \
+            git \
+            make \
+            pkgconf \
+            build-base \
+            linux-headers \
+            curl-dev curl-static \
+            pcre2-dev pcre2-static \
+            rapidjson-dev \
+            toml11
       - name: Checkout
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
-      - name: Install dependencies
+      - name: Build yaml-cpp (static)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            cmake \
-            g++ \
-            git \
-            libcurl4-openssl-dev \
-            libpcre2-dev \
-            rapidjson-dev \
-            libtoml11-dev \
-            libyaml-cpp-dev \
-            make \
-            patchelf \
-            pkg-config
+          git clone https://github.com/jbeder/yaml-cpp --depth=1
+          cmake -S yaml-cpp -B yaml-cpp/build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DYAML_CPP_BUILD_TESTS=OFF \
+            -DYAML_CPP_BUILD_TOOLS=OFF
+          cmake --build yaml-cpp/build -j "$(nproc)"
+          cmake --install yaml-cpp/build --prefix /usr/local
       - name: Build quickjspp
         run: |
           git clone https://github.com/ftk/quickjspp --depth=1
           cmake -S quickjspp -B quickjspp/build -DCMAKE_BUILD_TYPE=Release
           cmake --build quickjspp/build --target quickjs -j "$(nproc)"
-          sudo install -d /usr/local/lib/quickjs /usr/local/include/quickjs
-          sudo install -m644 quickjspp/build/quickjs/libquickjs.a /usr/local/lib/quickjs/
-          sudo install -m644 quickjspp/quickjs/quickjs.h quickjspp/quickjs/quickjs-libc.h /usr/local/include/quickjs/
-          sudo install -m644 quickjspp/quickjspp.hpp /usr/local/include/
+          install -d /usr/local/lib/quickjs /usr/local/include/quickjs
+          install -m644 quickjspp/build/quickjs/libquickjs.a /usr/local/lib/quickjs/
+          install -m644 quickjspp/quickjs/quickjs.h quickjspp/quickjs/quickjs-libc.h /usr/local/include/quickjs/
+          install -m644 quickjspp/quickjspp.hpp /usr/local/include/
       - name: Build libcron
         run: |
           git clone https://github.com/PerMalmberg/libcron --depth=1 --recurse-submodules
@@ -55,20 +68,25 @@ jobs:
           if [ -z "${LIBCRON_LIB}" ]; then
             echo "liblibcron.a not found"; exit 1
           fi
-          sudo install -m644 "${LIBCRON_LIB}" /usr/local/lib/
-          sudo install -d /usr/local/include/libcron /usr/local/include/date
+          install -m644 "${LIBCRON_LIB}" /usr/local/lib/
+          install -d /usr/local/include/libcron /usr/local/include/date
           LIBCRON_INC_DIR="$(find libcron -path '*/include/libcron' -type d | head -n1)"
           if [ -z "${LIBCRON_INC_DIR}" ]; then
             echo "libcron include dir not found"; exit 1
           fi
-          sudo install -m644 "${LIBCRON_INC_DIR}"/* /usr/local/include/libcron/
+          install -m644 "${LIBCRON_INC_DIR}"/* /usr/local/include/libcron/
           DATE_INC_DIR="$(find libcron -path '*/externals/date/include/date' -type d | head -n1)"
           if [ -z "${DATE_INC_DIR}" ]; then
             echo "date include dir not found"; exit 1
           fi
-          sudo install -m644 "${DATE_INC_DIR}"/* /usr/local/include/date/
+          install -m644 "${DATE_INC_DIR}"/* /usr/local/include/date/
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_FIND_LIBRARY_SUFFIXES=.a \
+            -DCMAKE_FIND_LIBRARY_PREFER_STATIC=ON \
+            -DCMAKE_EXE_LINKER_FLAGS="-static"
       - name: Build
         run: cmake --build build --config Release -j "$(nproc)"
       - name: Create build tag
@@ -93,9 +111,6 @@ jobs:
             cp -a "${PKG_DIR}/pref.example.ini" "${PKG_DIR}/pref.ini"
           fi
           cp -a build/subconverter "${PKG_DIR}/"
-          mkdir -p "${PKG_DIR}/lib"
-          cp -a /usr/lib/x86_64-linux-gnu/libyaml-cpp.so.* "${PKG_DIR}/lib/"
-          patchelf --set-rpath '$ORIGIN/lib' "${PKG_DIR}/subconverter"
           tar -czf "${PKG_DIR}.tar.gz" "${PKG_DIR}"
       - name: Publish release
         uses: softprops/action-gh-release@v2
