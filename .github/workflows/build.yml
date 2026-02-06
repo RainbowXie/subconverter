@@ -119,8 +119,9 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_FIND_LIBRARY_SUFFIXES=.a \
             -DCMAKE_FIND_LIBRARY_PREFER_STATIC=ON \
-            -DCMAKE_EXE_LINKER_FLAGS="-static ${CURL_STATIC_LIBS} ${OPENSSL_STATIC_LIBS}" \
+            -DCMAKE_EXE_LINKER_FLAGS="-static ${OPENSSL_STATIC_LIBS}" \
             -DCURL_STATICLIB="/usr/local/lib/libcurl.a" \
+            -DCURL_STATIC_LIBS="${CURL_STATIC_LIBS}" \
             -DPCRE2_STATICLIB="/usr/lib/libpcre2-8.a"
       - name: Build
         run: cmake --build build --config Release -j "$(nproc)"
