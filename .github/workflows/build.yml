@@ -1,0 +1,159 @@
+name: Build executable
+permissions:
+  contents: write
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request: {}
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build (linux)
+    runs-on: ubuntu-24.04
+    container:
+      image: alpine:3.22
+    steps:
+      - name: Install system dependencies
+        run: |
+          apk update
+          apk add --no-cache \
+            ca-certificates \
+            cmake \
+            coreutils \
+            curl \
+            git \
+            make \
+            pkgconf \
+            build-base \
+            linux-headers \
+            autoconf automake libtool \
+            openssl-dev openssl-libs-static \
+            zlib-dev zlib-static \
+            pcre2-dev pcre2-static \
+            rapidjson-dev \
+            toml11
+      - name: Checkout
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - name: Build yaml-cpp (static)
+        run: |
+          git clone https://github.com/jbeder/yaml-cpp --depth=1
+          cmake -S yaml-cpp -B yaml-cpp/build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DYAML_CPP_BUILD_TESTS=OFF \
+            -DYAML_CPP_BUILD_TOOLS=OFF
+          cmake --build yaml-cpp/build -j "$(nproc)"
+          cmake --install yaml-cpp/build --prefix /usr/local
+      - name: Build quickjspp
+        run: |
+          git clone https://github.com/ftk/quickjspp --depth=1
+          cmake -S quickjspp -B quickjspp/build -DCMAKE_BUILD_TYPE=Release
+          cmake --build quickjspp/build --target quickjs -j "$(nproc)"
+          install -d /usr/local/lib/quickjs /usr/local/include/quickjs
+          install -m644 quickjspp/build/quickjs/libquickjs.a /usr/local/lib/quickjs/
+          install -m644 quickjspp/quickjs/quickjs.h quickjspp/quickjs/quickjs-libc.h /usr/local/include/quickjs/
+          install -m644 quickjspp/quickjspp.hpp /usr/local/include/
+      - name: Build libcron
+        run: |
+          git clone https://github.com/PerMalmberg/libcron --depth=1 --recurse-submodules
+          cmake -S libcron -B libcron/build -DCMAKE_BUILD_TYPE=Release
+          cmake --build libcron/build --target libcron -j "$(nproc)"
+          LIBCRON_LIB="$(find libcron -name liblibcron.a -type f | head -n1)"
+          if [ -z "${LIBCRON_LIB}" ]; then
+            echo "liblibcron.a not found"; exit 1
+          fi
+          install -m644 "${LIBCRON_LIB}" /usr/local/lib/
+          install -d /usr/local/include/libcron /usr/local/include/date
+          LIBCRON_INC_DIR="$(find libcron -path '*/include/libcron' -type d | head -n1)"
+          if [ -z "${LIBCRON_INC_DIR}" ]; then
+            echo "libcron include dir not found"; exit 1
+          fi
+          install -m644 "${LIBCRON_INC_DIR}"/* /usr/local/include/libcron/
+          DATE_INC_DIR="$(find libcron -path '*/externals/date/include/date' -type d | head -n1)"
+          if [ -z "${DATE_INC_DIR}" ]; then
+            echo "date include dir not found"; exit 1
+          fi
+          install -m644 "${DATE_INC_DIR}"/* /usr/local/include/date/
+      - name: Build curl (static, minimal)
+        run: |
+          curl -L https://curl.se/download/curl-8.14.1.tar.gz -o /tmp/curl.tar.gz
+          tar -xzf /tmp/curl.tar.gz -C /tmp
+          cd /tmp/curl-8.14.1
+          ./configure \
+            --disable-shared \
+            --enable-static \
+            --with-openssl \
+            --with-zlib \
+            --disable-ntlm \
+            --without-brotli \
+            --without-zstd \
+            --without-nghttp2 \
+            --without-libpsl \
+            --without-libidn2 \
+            --without-librtmp \
+            --without-ldap \
+            --without-ssh2 \
+            --disable-ares \
+            --disable-rtsp \
+            --disable-dict \
+            --disable-telnet \
+            --disable-tftp \
+            --disable-pop3 \
+            --disable-imap \
+            --disable-smtp \
+            --disable-gopher \
+            --disable-mqtt \
+            --disable-manual
+          make -j "$(nproc)"
+          make install
+          export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:${PKG_CONFIG_PATH}"
+      - name: Configure
+        run: |
+          export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:${PKG_CONFIG_PATH}"
+          CURL_STATIC_LIBS="$(pkgconf --static --libs libcurl)"
+          OPENSSL_STATIC_LIBS="$(pkgconf --static --libs openssl)"
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_FIND_LIBRARY_SUFFIXES=.a \
+            -DCMAKE_FIND_LIBRARY_PREFER_STATIC=ON \
+            -DCMAKE_EXE_LINKER_FLAGS="-static ${OPENSSL_STATIC_LIBS}" \
+            -DCURL_STATICLIB="/usr/local/lib/libcurl.a" \
+            -DCURL_STATIC_LIBS="${CURL_STATIC_LIBS}" \
+            -DPCRE2_STATICLIB="/usr/lib/libpcre2-8.a"
+      - name: Build
+        run: cmake --build build --config Release -j "$(nproc)"
+      - name: Create build tag
+        run: |
+          git config --global --add safe.directory /__w/subconverter/subconverter
+          TAG="build-$(date -u +%Y%m%d-%H%M%S)-${GITHUB_SHA::7}"
+          echo "RELEASE_TAG=${TAG}" >> "${GITHUB_ENV}"
+          git tag "${TAG}" "${GITHUB_SHA}"
+          git push origin "${TAG}"
+      - name: Upload executable
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: subconverter-linux
+          path: build/subconverter
+          if-no-files-found: error
+          retention-days: 7
+      - name: Package full bundle
+        run: |
+          PKG_DIR="subconverter-${GITHUB_SHA}"
+          mkdir -p "${PKG_DIR}"
+          cp -a base/* "${PKG_DIR}/"
+          if [ ! -f "${PKG_DIR}/pref.ini" ] && [ -f "${PKG_DIR}/pref.example.ini" ]; then
+            cp -a "${PKG_DIR}/pref.example.ini" "${PKG_DIR}/pref.ini"
+          fi
+          cp -a build/subconverter "${PKG_DIR}/"
+          tar -czf "${PKG_DIR}.tar.gz" "${PKG_DIR}"
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: ${{ github.sha }}
+          files: |
+            build/subconverter
+            subconverter-${{ github.sha }}.tar.gz
