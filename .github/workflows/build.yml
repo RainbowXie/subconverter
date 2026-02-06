@@ -1,0 +1,44 @@
+name: Build executable
+permissions: {}
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - '.github/workflows/build.yml'
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - 'include/**'
+      - 'src/**'
+  pull_request: {}
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build (linux)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake \
+            g++ \
+            libcurl4-openssl-dev \
+            libpcre2-dev \
+            libyaml-cpp-dev \
+            pkg-config
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build --config Release -j "$(nproc)"
+      - name: Upload executable
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: subconverter-linux
+          path: build/subconverter
+          if-no-files-found: error
+          retention-days: 7
