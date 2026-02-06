@@ -29,6 +29,16 @@ jobs:
             build-base \
             linux-headers \
             curl-dev curl-static \
+            brotli-dev \
+            c-ares-dev \
+            libidn2-dev \
+            libpsl-dev \
+            libssh2-dev \
+            libunistring-dev \
+            nghttp2-dev \
+            openssl-dev \
+            zlib-dev zlib-static \
+            zstd-dev \
             pcre2-dev pcre2-static \
             rapidjson-dev \
             toml11
@@ -76,11 +86,12 @@ jobs:
           install -m644 "${DATE_INC_DIR}"/* /usr/local/include/date/
       - name: Configure
         run: |
+          CURL_STATIC_LIBS="$(pkgconf --static --libs libcurl)"
           cmake -S . -B build \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_FIND_LIBRARY_SUFFIXES=.a \
             -DCMAKE_FIND_LIBRARY_PREFER_STATIC=ON \
-            -DCMAKE_EXE_LINKER_FLAGS="-static" \
+            -DCMAKE_EXE_LINKER_FLAGS="-static ${CURL_STATIC_LIBS}" \
             -DCURL_STATICLIB="/usr/lib/libcurl.a" \
             -DPCRE2_STATICLIB="/usr/lib/libpcre2-8.a"
       - name: Build
