@@ -23,6 +23,7 @@ jobs:
             ca-certificates \
             cmake \
             coreutils \
+            curl \
             git \
             make \
             pkgconf \
