@@ -81,7 +81,8 @@ jobs:
             -DCMAKE_FIND_LIBRARY_SUFFIXES=.a \
             -DCMAKE_FIND_LIBRARY_PREFER_STATIC=ON \
             -DCMAKE_EXE_LINKER_FLAGS="-static" \
-            -DCURL_STATICLIB="/usr/lib/libcurl.a"
+            -DCURL_STATICLIB="/usr/lib/libcurl.a" \
+            -DPCRE2_STATICLIB="/usr/lib/libpcre2-8.a"
       - name: Build
         run: cmake --build build --config Release -j "$(nproc)"
       - name: Create build tag
