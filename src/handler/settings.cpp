@@ -2,6 +2,23 @@
 #include <mutex>
 #include <toml.hpp>
 
+namespace {
+template <typename T>
+constexpr bool has_is_uninitialized_v = requires(const T& v) { v.is_uninitialized(); };
+
+template <typename T>
+constexpr bool has_is_empty_v = requires(const T& v) { v.is_empty(); };
+
+static inline bool toml_value_is_empty(const toml::value& v)
+{
+    if constexpr (has_is_uninitialized_v<toml::value>)
+        return v.is_uninitialized();
+    if constexpr (has_is_empty_v<toml::value>)
+        return v.is_empty();
+    return false;
+}
+} // namespace
+
 #include "config/binding.h"
 #include "handler/webget.h"
 #include "script/cron.h"
@@ -803,7 +820,7 @@ void readConf()
                 return readYAMLConf(yaml);
         }
         toml::value conf = parseToml(prefdata, global.prefPath);
-        if(!conf.is_uninitialized() && toml::find_or<int>(conf, "version", 0))
+        if(!toml_value_is_empty(conf) && toml::find_or<int>(conf, "version", 0))
             return readTOMLConf(conf);
     }
     catch (YAML::Exception &e)
@@ -1213,7 +1230,7 @@ int loadExternalConfig(std::string &path, ExternalConfig &ext)
         if(yaml.size() && yaml["custom"].IsDefined())
             return loadExternalYAML(yaml, ext);
         toml::value conf = parseToml(base_content, path);
-        if(!conf.is_uninitialized() && toml::find_or<int>(conf, "version", 0))
+        if(!toml_value_is_empty(conf) && toml::find_or<int>(conf, "version", 0))
             return loadExternalTOML(conf, ext);
     }
     catch (YAML::Exception &e)
