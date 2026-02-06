@@ -87,6 +87,7 @@ jobs:
             --enable-static \
             --with-openssl \
             --with-zlib \
+            --disable-ntlm \
             --without-brotli \
             --without-zstd \
             --without-nghttp2 \
