@@ -2,6 +2,7 @@
 #define BINDING_H_INCLUDED
 
 #include <toml.hpp>
+#include <stdexcept>
 
 #include "handler/settings.h"
 #include "crontask.h"
@@ -75,13 +76,13 @@ namespace toml
                     conf.EvaluateBeforeUse = find_or(v, "evaluate-before-use", conf.EvaluateBeforeUse.get());
                 break;
             default:
-                throw serialization_error(format_error("Proxy Group has unsupported type!", v.at("type").location(), "should be one of following: select, url-test, load-balance, fallback, relay, ssid"), v.at("type").location());
+                throw std::runtime_error(format_error("Proxy Group has unsupported type!", v.at("type"), "should be one of following: select, url-test, load-balance, fallback, relay, ssid"));
             }
             conf.Timeout = find_or(v, "timeout", 5);
             conf.Proxies = find_or<StrArray>(v, "rule", {});
             conf.UsingProvider = find_or<StrArray>(v, "use", {});
             if(conf.Proxies.empty() && conf.UsingProvider.empty())
-                throw serialization_error(format_error("Proxy Group must contains at least one of proxy match rule or provider!", v.location(), "here"), v.location());
+                throw std::runtime_error(format_error("Proxy Group must contains at least one of proxy match rule or provider!", v, "here"));
             if(v.contains("disable-udp"))
                 conf.DisableUdp = find_or(v, "disable-udp", conf.DisableUdp.get());
             return conf;
@@ -132,7 +133,7 @@ namespace toml
                 conf.Url = type + ":";
                 break;
             default:
-                throw serialization_error(format_error("Ruleset has unsupported type!", v.at("type").location(), "should be one of following: surge-ruleset, quantumultx, clash-domain, clash-ipcidr, clash-classic"), v.at("type").location());
+                throw std::runtime_error(format_error("Ruleset has unsupported type!", v.at("type"), "should be one of following: surge-ruleset, quantumultx, clash-domain, clash-ipcidr, clash-classic"));
             }
             conf.Url += find<String>(v, "ruleset");
             conf.Interval = find_or<Integer>(v, "interval", 86400);
