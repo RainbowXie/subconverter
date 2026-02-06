@@ -4,6 +4,38 @@
 
 namespace {
 template <typename T>
+auto toml_is_uninitialized(const T& v, int) -> decltype(v.is_uninitialized(), bool())
+{
+    return v.is_uninitialized();
+}
+template <typename T>
+bool toml_is_uninitialized(const T&, long)
+{
+    return false;
+}
+
+template <typename T>
+auto toml_is_empty(const T& v, int) -> decltype(v.is_empty(), bool())
+{
+    return v.is_empty();
+}
+template <typename T>
+bool toml_is_empty(const T&, long)
+{
+    return false;
+}
+
+static inline bool toml_value_is_empty(const toml::value& v)
+{
+    if (toml_is_uninitialized(v, 0))
+        return true;
+    if (toml_is_empty(v, 0))
+        return true;
+    return false;
+}
+} // namespace
+namespace {
+template <typename T>
 constexpr bool has_is_uninitialized_v = requires(const T& v) { v.is_uninitialized(); };
 
 template <typename T>
