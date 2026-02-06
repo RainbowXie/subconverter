@@ -28,17 +28,9 @@ jobs:
             pkgconf \
             build-base \
             linux-headers \
-            curl-dev curl-static \
-            brotli-dev brotli-static \
-            c-ares-dev c-ares-static \
-            libidn2-dev libidn2-static \
-            libpsl-dev libpsl-static \
-            libssh2-dev libssh2-static \
-            libunistring-dev libunistring-static \
-            nghttp2-dev nghttp2-static \
+            autoconf automake libtool \
             openssl-dev openssl-libs-static \
             zlib-dev zlib-static \
-            zstd-dev zstd-static \
             pcre2-dev pcre2-static \
             rapidjson-dev \
             toml11
@@ -92,7 +84,7 @@ jobs:
             -DCMAKE_FIND_LIBRARY_SUFFIXES=.a \
             -DCMAKE_FIND_LIBRARY_PREFER_STATIC=ON \
             -DCMAKE_EXE_LINKER_FLAGS="-static ${CURL_STATIC_LIBS}" \
-            -DCURL_STATICLIB="/usr/lib/libcurl.a" \
+            -DCURL_STATICLIB="/usr/local/lib/libcurl.a" \
             -DPCRE2_STATICLIB="/usr/lib/libpcre2-8.a"
       - name: Build
         run: cmake --build build --config Release -j "$(nproc)"
@@ -127,3 +119,34 @@ jobs:
           files: |
             build/subconverter
             subconverter-${{ github.sha }}.tar.gz
+      - name: Build curl (static, minimal)
+        run: |
+          curl -L https://curl.se/download/curl-8.14.1.tar.gz -o /tmp/curl.tar.gz
+          tar -xzf /tmp/curl.tar.gz -C /tmp
+          cd /tmp/curl-8.14.1
+          ./configure \
+            --disable-shared \
+            --enable-static \
+            --with-openssl \
+            --with-zlib \
+            --without-brotli \
+            --without-zstd \
+            --without-nghttp2 \
+            --without-libpsl \
+            --without-libidn2 \
+            --without-librtmp \
+            --without-ldap \
+            --without-ssh2 \
+            --disable-ares \
+            --disable-rtsp \
+            --disable-dict \
+            --disable-telnet \
+            --disable-tftp \
+            --disable-pop3 \
+            --disable-imap \
+            --disable-smtp \
+            --disable-gopher \
+            --disable-mqtt \
+            --disable-manual
+          make -j "$(nproc)"
+          make install
