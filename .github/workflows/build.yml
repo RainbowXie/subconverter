@@ -1,0 +1,102 @@
+name: Build executable
+permissions:
+  contents: write
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - '.github/workflows/build.yml'
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - 'include/**'
+      - 'src/**'
+  pull_request: {}
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build (linux)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake \
+            g++ \
+            git \
+            libcurl4-openssl-dev \
+            libpcre2-dev \
+            rapidjson-dev \
+            libtoml11-dev \
+            libyaml-cpp-dev \
+            make \
+            pkg-config
+      - name: Build quickjspp
+        run: |
+          git clone https://github.com/ftk/quickjspp --depth=1
+          cmake -S quickjspp -B quickjspp/build -DCMAKE_BUILD_TYPE=Release
+          cmake --build quickjspp/build --target quickjs -j "$(nproc)"
+          sudo install -d /usr/local/lib/quickjs /usr/local/include/quickjs
+          sudo install -m644 quickjspp/build/quickjs/libquickjs.a /usr/local/lib/quickjs/
+          sudo install -m644 quickjspp/quickjs/quickjs.h quickjspp/quickjs/quickjs-libc.h /usr/local/include/quickjs/
+          sudo install -m644 quickjspp/quickjspp.hpp /usr/local/include/
+      - name: Build libcron
+        run: |
+          git clone https://github.com/PerMalmberg/libcron --depth=1 --recurse-submodules
+          cmake -S libcron -B libcron/build -DCMAKE_BUILD_TYPE=Release
+          cmake --build libcron/build --target libcron -j "$(nproc)"
+          LIBCRON_LIB="$(find libcron -name liblibcron.a -type f | head -n1)"
+          if [ -z "${LIBCRON_LIB}" ]; then
+            echo "liblibcron.a not found"; exit 1
+          fi
+          sudo install -m644 "${LIBCRON_LIB}" /usr/local/lib/
+          sudo install -d /usr/local/include/libcron /usr/local/include/date
+          LIBCRON_INC_DIR="$(find libcron -path '*/include/libcron' -type d | head -n1)"
+          if [ -z "${LIBCRON_INC_DIR}" ]; then
+            echo "libcron include dir not found"; exit 1
+          fi
+          sudo install -m644 "${LIBCRON_INC_DIR}"/* /usr/local/include/libcron/
+          DATE_INC_DIR="$(find libcron -path '*/externals/date/include/date' -type d | head -n1)"
+          if [ -z "${DATE_INC_DIR}" ]; then
+            echo "date include dir not found"; exit 1
+          fi
+          sudo install -m644 "${DATE_INC_DIR}"/* /usr/local/include/date/
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build --config Release -j "$(nproc)"
+      - name: Create/Update latest tag
+        run: |
+          git tag -f latest "${GITHUB_SHA}"
+          git push -f origin latest
+      - name: Upload executable
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: subconverter-linux
+          path: build/subconverter
+          if-no-files-found: error
+          retention-days: 7
+      - name: Package full bundle
+        run: |
+          PKG_DIR="subconverter-${GITHUB_SHA}"
+          mkdir -p "${PKG_DIR}"
+          cp -a base/* "${PKG_DIR}/"
+          if [ ! -f "${PKG_DIR}/pref.ini" ] && [ -f "${PKG_DIR}/pref.example.ini" ]; then
+            cp -a "${PKG_DIR}/pref.example.ini" "${PKG_DIR}/pref.ini"
+          fi
+          cp -a build/subconverter "${PKG_DIR}/"
+          tar -czf "${PKG_DIR}.tar.gz" "${PKG_DIR}"
+      - name: Publish release (latest)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: ${{ github.sha }}
+          make_latest: true
+          files: |
+            build/subconverter
+            subconverter-${{ github.sha }}.tar.gz
