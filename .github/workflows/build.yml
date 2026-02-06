@@ -35,6 +35,7 @@ jobs:
             libtoml11-dev \
             libyaml-cpp-dev \
             make \
+            patchelf \
             pkg-config
       - name: Build quickjspp
         run: |
@@ -90,6 +91,9 @@ jobs:
             cp -a "${PKG_DIR}/pref.example.ini" "${PKG_DIR}/pref.ini"
           fi
           cp -a build/subconverter "${PKG_DIR}/"
+          mkdir -p "${PKG_DIR}/lib"
+          cp -a /usr/lib/x86_64-linux-gnu/libyaml-cpp.so.* "${PKG_DIR}/lib/"
+          patchelf --set-rpath '$ORIGIN/lib' "${PKG_DIR}/subconverter"
           tar -czf "${PKG_DIR}.tar.gz" "${PKG_DIR}"
       - name: Publish release (latest)
         uses: softprops/action-gh-release@v2
