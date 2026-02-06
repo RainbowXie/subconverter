@@ -29,16 +29,16 @@ jobs:
             build-base \
             linux-headers \
             curl-dev curl-static \
-            brotli-dev \
-            c-ares-dev \
-            libidn2-dev \
-            libpsl-dev \
-            libssh2-dev \
-            libunistring-dev \
-            nghttp2-dev \
-            openssl-dev \
+            brotli-dev brotli-static \
+            c-ares-dev c-ares-static \
+            libidn2-dev libidn2-static \
+            libpsl-dev libpsl-static \
+            libssh2-dev libssh2-static \
+            libunistring-dev libunistring-static \
+            nghttp2-dev nghttp2-static \
+            openssl-dev openssl-libs-static \
             zlib-dev zlib-static \
-            zstd-dev \
+            zstd-dev zstd-static \
             pcre2-dev pcre2-static \
             rapidjson-dev \
             toml11
