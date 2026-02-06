@@ -114,11 +114,12 @@ jobs:
         run: |
           export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:${PKG_CONFIG_PATH}"
           CURL_STATIC_LIBS="$(pkgconf --static --libs libcurl)"
+          OPENSSL_STATIC_LIBS="$(pkgconf --static --libs openssl)"
           cmake -S . -B build \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_FIND_LIBRARY_SUFFIXES=.a \
             -DCMAKE_FIND_LIBRARY_PREFER_STATIC=ON \
-            -DCMAKE_EXE_LINKER_FLAGS="-static ${CURL_STATIC_LIBS}" \
+            -DCMAKE_EXE_LINKER_FLAGS="-static ${CURL_STATIC_LIBS} ${OPENSSL_STATIC_LIBS}" \
             -DCURL_STATICLIB="/usr/local/lib/libcurl.a" \
             -DPCRE2_STATICLIB="/usr/lib/libpcre2-8.a"
       - name: Build
